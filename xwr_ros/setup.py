@@ -21,8 +21,8 @@ setup(
     description='A ROS2 wrapper for the XWR radar streaming library',
     entry_points={
         'console_scripts': [
-            'stream = radar_stream.stream:main',
-            'process = radar_stream.process:main',
+            'stream = xwr_ros.stream:main',
+            'process = xwr_ros.process:main',
         ],
     },
 )

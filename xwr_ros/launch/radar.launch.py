@@ -8,12 +8,11 @@ def generate_launch_description():
     cfg_arg = DeclareLaunchArgument(
         "config",
         default_value=TextSubstitution(text="config"),
-        description="configuration file name without .yaml",
+        description="configuration file name under xwr_ros/config without .yaml",
     )
 
-    # Node 1
     radar_stream = Node(
-        package="radar_stream",
+        package="xwr_ros",
         executable="stream",
         name="stream",
         output="screen",

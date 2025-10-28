@@ -1,6 +1,5 @@
 import logging
 import os
-from pprint import pprint
 
 import numpy as np
 import rclpy
@@ -9,22 +8,21 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rich.logging import RichHandler
-from std_msgs.msg import Int16MultiArray, MultiArrayDimension
+from std_msgs.msg import MultiArrayDimension
+from xwr_msgs.msg import IQ
 
 
 class RadarPublisher(Node):
     def __init__(self):
-        super().__init__("radar_stream")
+        super().__init__("xwr_ros")
         self.declare_parameter("config", "config")
         cfg = self.get_parameter("config").get_parameter_value().string_value
         cfg_path = os.path.join(
-            get_package_share_directory("radar_stream"), "config", f"{cfg}.yaml"
+            get_package_share_directory("xwr_ros"), "config", f"{cfg}.yaml"
         )
 
         with open(cfg_path, "r") as file:
             self.cfg = yaml.safe_load(file)
-
-        pprint(self.cfg)
 
         logging.basicConfig(
             level=logging.INFO,
@@ -32,22 +30,20 @@ class RadarPublisher(Node):
             datefmt="[%H:%M:%S]",
             handlers=[RichHandler()],
         )
-        self.log = logging.getLogger("XWRDemo")
 
         self.awr = xwr.XWRSystem(**self.cfg)
 
-        self.msg = None
+        self.msg: IQ | None = None
         self.dim_label = ["chirp", "tx", "rx", "sample"]
-        self.pub_radar = self.create_publisher(Int16MultiArray, "radar_raw", 10)
+        self.pub_radar = self.create_publisher(IQ, "xwr/iq", 10)
 
     def stream(self):
         for frame in self.awr.dstream(numpy=True):
             # batch doppler elevation azimuth range
             if self.msg is None:
-                self.msg = Int16MultiArray()
-
-                # Set up the layout dimensions
-                self.msg.layout.dim = []
+                self.msg = IQ()
+                self.msg.header.frame_id = "xwr"
+                self.msg.iq.layout.dim = []
 
                 # Add dimension information
                 for i, dim_size in enumerate(frame.shape):
@@ -57,12 +53,12 @@ class RadarPublisher(Node):
                     dim.stride = int(
                         np.prod(frame.shape[i:])
                     )  # stride for this dimension
-                    self.msg.layout.dim.append(dim)
-
-                self.msg.layout.data_offset = 0
+                    self.msg.iq.layout.dim.append(dim)
+                self.msg.iq.layout.data_offset = 0
 
             # Flatten the array and convert to list
-            self.msg.data = frame.flatten().tolist()
+            self.msg.header.stamp = self.get_clock().now().to_msg()
+            self.msg.iq.data = frame.flatten().tolist()
             self.pub_radar.publish(self.msg)
 
 
@@ -72,9 +68,5 @@ def main():
     try:
         node.stream()
     except KeyboardInterrupt:
-        node.log.warning("stream interrupted by user.")
+        node._logger.warning("stream interrupted by user.")
         node.awr.stop()
-
-
-if __name__ == "__main__":
-    main()
