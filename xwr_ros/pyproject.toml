@@ -1,0 +1,37 @@
+[project]
+name = "xwr_ros"
+version = "0.1.0"
+description = "A ROS2 wrapper for the XWR radar streaming library"
+authors = [{ name = "Ray", email = "juiteh@andrew.cmu.edu" }]
+dependencies = ["xwr==0.3.5", "numpy<1.25", "rich"]
+
+[tool.uv]
+offline = true
+
+[project.scripts]
+process = "xwr_ros.process:main"
+stream = "xwr_ros.stream:main"
+
+[tool.colcon-uv-ros]
+name = "xwr_ros"
+
+[tool.colcon-uv-ros.dependencies]
+depend = [
+    "rclpy",
+    "std_msgs",
+    "sensor_msgs",
+    "cv_bridge",
+    "opencv2",
+    "xwr_msgs",
+]
+
+[tool.colcon-uv-ros.data-files]
+"share/ament_index/resource_index/packages" = ["resource/xwr_ros"]
+"share/xwr_ros" = ["package.xml", "launch", "config"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["xwr_ros"]
