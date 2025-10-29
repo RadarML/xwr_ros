@@ -33,7 +33,7 @@ class RadarProcess(Node):
         self.pub_ra = self.create_publisher(Image, "xwr/range_azimuth", 10)
 
         # Create subscriber
-        self.subscription = self.create_subscription(IQ, "xwr/iq", self.radar_cb, 10)
+        self.subscription = self.create_subscription(IQ, "xwr/iq", self.radar_cb, 1)
 
         self._logger.info("Range-Doppler and Range-Azimuth visualization.")
 
