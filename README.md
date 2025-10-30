@@ -8,5 +8,5 @@ pip install uv colcon-uv
 
 will create a venv when building with colcon
 ```
-UV_VENV_CLEAR=1 UV_OFFLINE=1 UV_LINK_MODE=symlink colcon build
+UV_VENV_CLEAR=1 UV_LINK_MODE=symlink colcon build
 ```
