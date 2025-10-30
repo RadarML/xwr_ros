@@ -14,6 +14,7 @@ ament_auto_find_build_dependencies()
 #############################################
 find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/ChirpInfo.msg"
   "msg/IQ.msg"
   DEPENDENCIES std_msgs
 )

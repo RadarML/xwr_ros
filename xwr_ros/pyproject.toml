@@ -5,9 +5,6 @@ description = "A ROS2 wrapper for the XWR radar streaming library"
 authors = [{ name = "Ray", email = "juiteh@andrew.cmu.edu" }]
 dependencies = ["xwr==0.3.5", "numpy<1.25", "rich"]
 
-[tool.uv]
-offline = true
-
 [project.scripts]
 process = "xwr_ros.process:main"
 stream = "xwr_ros.stream:main"

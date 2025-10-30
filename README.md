@@ -6,9 +6,7 @@ depends on uv and [colcon-uv](https://github.com/nzlz/colcon-uv)
 pip install uv colcon-uv
 ```
 
-will create a venv when the package is build with colcon build
+will create a venv when building with colcon
 ```
-export UV_VENV_CLEAR=1
-export UV_LINK_MODE=copy
-colcon build
+UV_VENV_CLEAR=1 UV_OFFLINE=1 UV_LINK_MODE=symlink colcon build
 ```

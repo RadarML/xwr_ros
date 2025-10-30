@@ -9,8 +9,8 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.time import Time
 from rich.logging import RichHandler
-from std_msgs.msg import MultiArrayDimension
-from xwr_msgs.msg import IQ
+from std_msgs.msg import MultiArrayDimension, MultiArrayLayout, Int16MultiArray
+from xwr_msgs.msg import IQ, ChirpInfo
 
 
 class RadarPublisher(Node):
@@ -33,32 +33,48 @@ class RadarPublisher(Node):
         )
 
         self.awr = xwr.XWRSystem(**self.cfg)
+        self.msg_iq = IQ()
+        self.layout = MultiArrayLayout()
+        self.msg_info = ChirpInfo()
 
-        self.msg = IQ()
-        self.msg.iq.layout.dim = []
-        self.msg.header.frame_id = "xwr"
+        self.msg_iq.header.frame_id = "xwr"
+        self.layout.dim = []
         self.dim_label = ["chirp", "tx", "rx", "sample"]
         for i, dim_size in enumerate(self.awr.config.raw_shape):
             dim = MultiArrayDimension()
             dim.label = self.dim_label[i]
             dim.size = dim_size
             dim.stride = int(np.prod(self.awr.config.raw_shape[i:]))
-            self.msg.iq.layout.dim.append(dim)
-        self.msg.iq.layout.data_offset = 0
+            self.layout.dim.append(dim)
+        self.layout.data_offset = 0
 
-        self.pub_radar = self.create_publisher(IQ, "xwr/iq", 10)
+        for attr in dir(self.awr.config):
+            if not attr.startswith("__") and hasattr(self.msg_info, attr):
+                setattr(self.msg_info, attr, getattr(self.awr.config, attr))
+
+        self.pub_iq = self.create_publisher(IQ, "xwr/iq", 10)
+        self.pub_info = self.create_publisher(ChirpInfo, "xwr/info", 10)
 
     def stream(self):
-        for frame in self.awr.dstream(numpy=False):
-            seconds = int(frame.timestamp)
-            nanoseconds = int((frame.timestamp - seconds) * 1_000_000_000)
-            self.msg.header.stamp = Time(
-                seconds=seconds, nanoseconds=nanoseconds
-            ).to_msg()
-            data = np.frombuffer(frame.data, dtype=np.int16)
-            self.msg.iq.data = data.tolist()
-            self._logger.info(f"{frame.timestamp}")
-            self.pub_radar.publish(self.msg)
+        que = self.awr.qstream(numpy=False)
+        while True:
+            frame = que.get(block=True, timeout=None)
+            if frame is None:
+                self._logger.info("Stream ended.")
+                break
+
+            # publish IQ data
+            sec = int(frame.timestamp)
+            nano_sec = int((frame.timestamp - sec) * 1_000_000_000)
+            self.msg_iq.header.stamp = Time(seconds=sec, nanoseconds=nano_sec).to_msg()
+            self.msg_iq.iq = Int16MultiArray(layout=self.layout, data=frame.data)
+            self.msg_iq.complete = frame.complete
+            self.pub_iq.publish(self.msg_iq)
+
+            # publish chirp config info
+            if self.pub_info.get_subscription_count() > 0:
+                self.msg_info.header = self.msg_iq.header
+                self.pub_info.publish(self.msg_info)
 
 
 def main():
