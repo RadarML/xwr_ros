@@ -35,6 +35,11 @@ capture:
     socket_buffer: 6291456
 ```
 
+Set the ip address of the network interface for the DCA capture board as:
+```
+192.168.33.30
+```
+
 ## Launch xwr_ros
 
 Launch xwr streaming node with the config file.
