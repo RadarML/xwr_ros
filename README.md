@@ -42,6 +42,11 @@ Set the ip address of the network interface for the DCA capture board as:
 
 ## Launch xwr_ros
 
+Increase [socket receive buffer size](https://radarml.github.io/xwr/usage/#receive-socket-buffer) before starting streaming
+```sh
+sudo sysctl -w net.core.rmem_max=6291456  # 6.3 MiB = 8 frames @ 786k each.
+```
+
 Launch xwr streaming node with the config file.
 ```sh
 ros2 launch xwr_ros radar.launch.py config:=config
