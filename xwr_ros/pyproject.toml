@@ -3,7 +3,13 @@ name = "xwr_ros"
 version = "0.1.0"
 description = "A ROS2 wrapper for the XWR radar streaming library"
 authors = [{ name = "Ray", email = "juiteh@andrew.cmu.edu" }]
-dependencies = ["xwr==0.3.5", "numpy<1.25", "rich"]
+dependencies = [
+    "jax[cuda12]>=0.5.0",
+    "xwr[jax]==0.3.5",
+    "rich",
+    "matplotlib",
+    "opencv-python",
+]
 
 [project.scripts]
 process = "xwr_ros.process:main"
@@ -32,3 +38,25 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["xwr_ros"]
+
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "N", "I", "D", "NPY"]
+ignore = [
+    "D102", # Inheriting docstrings is allowed
+    "D107", # Initializer goes in the class docstring
+    "D401", # "Imperative mood" NLP doesn't always make sense
+    "D413", # No blank lines after section is preferred by mkdocstrings
+    "N806", # We do math, so capitalization should be allowed
+    "E402", # Module level imports sometimes need to occur after configuration
+    "F722", # Jaxtyping annotations confuse ruff
+    "F821",
+
+    # Must pick one...
+    "D213", # Pick 'multi-line-summary-first-line'.
+    "D203", # Pick `no-blank-line-before-class`.
+]

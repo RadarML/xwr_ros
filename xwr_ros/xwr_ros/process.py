@@ -1,77 +1,125 @@
+"""Radar signal processing node."""
+
 import os
-import yaml
+from functools import cached_property
 
-import numpy as np
+import jax
 import matplotlib.pyplot as plt
-
-from ament_index_python.packages import get_package_share_directory
-
-from xwr.rsp import numpy as xwr_rsp
-
+import numpy as np
 import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from jax import numpy as jnp
+from jaxtyping import Array, Complex64, Int16
 from rclpy.node import Node
-
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from std_msgs.msg import MultiArrayDimension
+from xwr.rsp import iq_from_iiqq
+from xwr.rsp import jax as xwr_rsp
 from xwr_msgs.msg import IQ
+
+# warnings.filterwarnings("error")
 
 
 class RadarProcess(Node):
-    def __init__(self, config_file_path, rsp="AWR1843AOP", gain=5e-6):
+    """Radar signal process node."""
+
+    def __init__(self):
         super().__init__("sig_process")
 
-        with open(config_file_path, "r") as file:
+        self.declare_parameter("config", "config")
+        self.declare_parameter("dsp", "AWR1843AOP")
+        self.declare_parameter("gain", 2e-6)
+        cfg = self.get_parameter("config").get_parameter_value().string_value
+        rsp = self.get_parameter("dsp").get_parameter_value().string_value
+        self.gain = (
+            self.get_parameter("gain").get_parameter_value().double_value
+        )
+
+        cfg_path = os.path.join(
+            get_package_share_directory("xwr_ros"), "config", f"{cfg}.yaml"
+        )
+        with open(cfg_path, "r") as file:
             self.cfg = yaml.safe_load(file)
 
+        self._logger.info(f"config: {cfg_path}")
+        self._logger.info(f"rsp: {rsp}")
+        self._logger.info(f"gain: {self.gain}")
+
         self.layout = None
-        self.rsp_inst = getattr(xwr_rsp, rsp)(window=False, size={"azimuth": 64})
-        self.cmap = plt.get_cmap("hot")  # type: ignore
-        self.gain = gain
-        self.bridge = CvBridge()
+        self.rsp_inst: xwr_rsp.RSPJax = getattr(xwr_rsp, rsp)(
+            window=False, size={"elevation": 64, "azimuth": 64}
+        )
+        self.cmap = plt.get_cmap("hot")
 
         self.pub_rd = self.create_publisher(Image, "xwr/range_doppler", 10)
         self.pub_ra = self.create_publisher(Image, "xwr/range_azimuth", 10)
 
-        # Create subscriber
-        self.subscription = self.create_subscription(IQ, "xwr/iq", self.radar_cb, 1)
+        self.subscription = self.create_subscription(
+            IQ, "xwr/iq", self.radar_cb, 1
+        )
 
-        self._logger.info("Range-Doppler and Range-Azimuth visualization.")
+        self._logger.info("Radar RSP and visualization.")
+
+    @cached_property
+    def process(self):
+        @jax.jit  # jit x30 faster
+        def _inner(
+            iiqq: Int16[Array, "doppler tx rx _range"],
+        ) -> Complex64[Array, "doppler elevation azimuth range"]:
+            iq = iq_from_iiqq(iiqq[None, ...])  # batch
+            d__r = self.rsp_inst.doppler_range(iq)
+            dear = self.rsp_inst.elevation_azimuth(d__r)
+            return dear
+
+        return _inner
 
     def get_msg(self, rimg):
-        img = (self.cmap(np.clip(rimg * self.gain, 0, 1))[:, :, :3] * 255).astype(
-            np.uint8
+        img = self.cmap(np.clip(rimg * self.gain, 0, 1))[:, :, :3] * 255
+        img = np.ascontiguousarray(img.astype(np.uint8))
+        h, w, c = img.shape
+        return Image(
+            data=img.tobytes(),
+            height=h,
+            width=w,
+            encoding="rgb8",
+            is_bigendian=0,
+            step=w * c,
         )
-        r_msg = self.bridge.cv2_to_imgmsg(img, encoding="rgb8")
-        r_msg.header.stamp = self.get_clock().now().to_msg()
-        r_msg.header.frame_id = "xwr"
-        return r_msg
 
     def radar_cb(self, msg: IQ):
-        data = np.array(msg.iq.data, dtype=np.int16)
-
         if self.layout is None:
-            self.layout = []
+            self.layout, name = [], []
+            dim: MultiArrayDimension
             for dim in msg.iq.layout.dim:
                 self.layout.append(dim.size)
-            self._logger.info(f"Radar IQ data layout: {self.layout}")
+                name.append(dim.label)
+            self._logger.info(f"Radar IQ layout: {name}")
+            self._logger.info(f"Radar IQ shape: {self.layout}")
 
+        data = jnp.frombuffer(msg.iq.data, dtype=jnp.int16)
         data = data.reshape(self.layout)
 
-        dear = np.abs(self.rsp_inst(data[None, ...]))
-        rd = np.swapaxes(np.mean(dear, axis=(0, 2, 3)), 0, 1)
-        ra = np.swapaxes(np.mean(dear, axis=(0, 1, 2)), 0, 1)
+        dear = jnp.abs(self.process(data))
 
-        self.pub_rd.publish(self.get_msg(rd))
-        self.pub_ra.publish(self.get_msg(ra))
+        if self.pub_rd.get_subscription_count() > 0:
+            rd = jnp.swapaxes(jnp.mean(dear, axis=(0, 2, 3)), 0, 1)
+            msg_rd = self.get_msg(rd)
+            msg_rd.header = msg.header
+            self.pub_rd.publish(msg_rd)
+
+        if self.pub_ra.get_subscription_count() > 0:
+            ra = jnp.swapaxes(jnp.mean(dear, axis=(0, 1, 2)), 0, 1)
+            msg_ra = self.get_msg(ra)
+            msg_ra.header = msg.header
+            self.pub_ra.publish(msg_ra)
 
 
 def main():
+    """Node execution point."""
     rclpy.init()
 
-    package_share_directory = get_package_share_directory("xwr_ros")
-    config_file_path = os.path.join(package_share_directory, "config", "config.yaml")
-
-    node = RadarProcess(config_file_path)
+    node = RadarProcess()
 
     try:
         rclpy.spin(node)
@@ -79,4 +127,3 @@ def main():
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()

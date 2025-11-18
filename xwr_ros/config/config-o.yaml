@@ -1,5 +1,3 @@
-# This can be passed to `AWRSystem` by simply unpacking:
-# system = AWRSystem(**config)
 radar:  # -> AWRConfig
   device: AWR1843
   port: null  # auto-detect
