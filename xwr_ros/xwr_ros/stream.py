@@ -1,3 +1,5 @@
+"""Radar stream node."""
+
 import logging
 import os
 
@@ -9,11 +11,13 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.time import Time
 from rich.logging import RichHandler
-from std_msgs.msg import MultiArrayDimension, MultiArrayLayout, Int16MultiArray
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension, MultiArrayLayout
 from xwr_msgs.msg import IQ, ChirpInfo
 
 
 class RadarPublisher(Node):
+    """Radar Stream Node."""
+
     def __init__(self):
         super().__init__("xwr_ros")
         self.declare_parameter("config", "config")
@@ -66,8 +70,12 @@ class RadarPublisher(Node):
             # publish IQ data
             sec = int(frame.timestamp)
             nano_sec = int((frame.timestamp - sec) * 1_000_000_000)
-            self.msg_iq.header.stamp = Time(seconds=sec, nanoseconds=nano_sec).to_msg()
-            self.msg_iq.iq = Int16MultiArray(layout=self.layout, data=frame.data)
+            self.msg_iq.header.stamp = Time(
+                seconds=sec, nanoseconds=nano_sec
+            ).to_msg()
+            self.msg_iq.iq = Int16MultiArray(
+                layout=self.layout, data=frame.data
+            )
             self.msg_iq.complete = frame.complete
             self.pub_iq.publish(self.msg_iq)
 
@@ -78,6 +86,7 @@ class RadarPublisher(Node):
 
 
 def main():
+    """Node access point."""
     rclpy.init()
     node = RadarPublisher()
     try:
