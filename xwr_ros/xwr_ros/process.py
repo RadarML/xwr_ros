@@ -170,7 +170,6 @@ class RadarProcess(Node):
 
         if self.pub_pc.get_subscription_count() > 0:
             points = np.asarray(pc)[pc_mask]
-            points[:, 2] = -points[:, 2]
             self._logger.info(f"pts: {points.shape}")
 
             pointcloud_msg = PointCloud2(

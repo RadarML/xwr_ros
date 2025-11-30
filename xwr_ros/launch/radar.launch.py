@@ -1,10 +1,13 @@
-from launch import LaunchDescription
+"""Launch file for xwr_ros radar stream node."""
 from launch.actions import DeclareLaunchArgument
-from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch_ros.actions import Node
+
+from launch import LaunchDescription
 
 
 def generate_launch_description():
+    """Generate launch description."""
     cfg_arg = DeclareLaunchArgument(
         "config",
         default_value=TextSubstitution(text="config"),
