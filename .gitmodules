@@ -1,0 +1,3 @@
+[submodule "xwr"]
+	path = xwr
+	url = git@github.com:RadarML/xwr
