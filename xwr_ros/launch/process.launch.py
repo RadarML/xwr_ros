@@ -15,8 +15,8 @@ def generate_launch_description():
         description="config file name under xwr_ros/config without .yaml",
     )
 
-    dsp_arg = DeclareLaunchArgument(
-        "dsp",
+    rsp_arg = DeclareLaunchArgument(
+        "rsp",
         default_value=TextSubstitution(text="AWR1843AOP"),
         description="DSP processing type (e.g., AWR1843AOP)",
     )
@@ -59,7 +59,7 @@ def generate_launch_description():
         parameters=[
             {
                 "config": LaunchConfiguration("config"),
-                "dsp": LaunchConfiguration("dsp"),
+                "rsp": LaunchConfiguration("rsp"),
                 "gain": LaunchConfiguration("gain"),
                 "azimuth_fft_size": LaunchConfiguration("azimuth_fft_size"),
                 "elevation_fft_size": LaunchConfiguration("elevation_fft_size"),
@@ -72,7 +72,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             cfg_arg,
-            dsp_arg,
+            rsp_arg,
             gain_arg,
             azimuth_fft_size_arg,
             elevation_fft_size_arg,

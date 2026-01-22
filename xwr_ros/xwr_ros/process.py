@@ -1,25 +1,18 @@
 """Radar signal processing node."""
 
 import os
-from functools import cached_property
 
-import jax
-import matplotlib.pyplot as plt
-import numpy as np
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from jax import numpy as jnp
-from jaxtyping import Array, Float, Int16
 from rclpy.node import Node
 from sensor_msgs.msg import Image, PointCloud2, PointField
 from std_msgs.msg import MultiArrayDimension
 from xwr import XWRConfig
-from xwr.rsp import iq_from_iiqq
-from xwr.rsp import jax as xwr_rsp
 from xwr_msgs.msg import IQ
 
-# warnings.filterwarnings("error")
+from .dsp import RadarDSP
 
 
 class RadarProcess(Node):
@@ -56,37 +49,38 @@ class RadarProcess(Node):
             .get_parameter_value()
             .double_value
         )
-        self.gain = (
-            self.get_parameter("gain").get_parameter_value().double_value
-        )
+        gain = self.get_parameter("gain").get_parameter_value().double_value
 
         cfg_path = os.path.join(
             get_package_share_directory("xwr_ros"), "config", f"{cfg}.yaml"
         )
         with open(cfg_path, "r") as file:
             cfg = yaml.safe_load(file)
-        self.cfg = XWRConfig(**cfg["radar"])
+        radar_config = XWRConfig(**cfg["radar"])
 
         self._logger.info(f"config: {cfg_path}")
-        self._logger.info(f"range resolution: {self.cfg.range_resolution}")
-        self._logger.info(f"doppler resolution: {self.cfg.doppler_resolution}")
+        self._logger.info(f"range resolution: {radar_config.range_resolution}")
+        self._logger.info(
+            f"doppler resolution: {radar_config.doppler_resolution}"
+        )
         self._logger.info(f"fov: (ele: {ele_fov}, azi {azi_fov})")
         self._logger.info(f"angle fft size: (ele: {ele_ffts}, azi; {azi_ffts})")
         self._logger.info(f"rsp: {rsp}")
-        self._logger.info(f"gain: {self.gain}")
+        self._logger.info(f"gain: {gain}")
+
+        # Initialize RadarDSP
+        self.dsp = RadarDSP(
+            config=radar_config,
+            rsp=rsp,
+            gain=gain,
+            azimuth_fft_size=azi_ffts,
+            elevation_fft_size=ele_ffts,
+            azimuth_fov=azi_fov,
+            elevation_fov=ele_fov,
+            window=False,
+        )
 
         self.layout = None
-        self.rsp_inst: xwr_rsp.RSPJax = getattr(xwr_rsp, rsp)(
-            window=False, size={"elevation": ele_ffts, "azimuth": azi_ffts}
-        )
-        self.cfar = xwr_rsp.CFARCASO()
-        self.radar_pc = xwr_rsp.PointCloud(
-            self.cfg.range_resolution,
-            self.cfg.doppler_resolution,
-            angle_fov=(ele_fov, azi_fov),
-            angle_size=(ele_ffts, azi_ffts),
-        )
-        self.cmap = plt.get_cmap("hot")  # type: ignore
 
         fname = ["x", "y", "z", "doppler"]
         self.fields = [
@@ -104,41 +98,7 @@ class RadarProcess(Node):
         self.pub_pc = self.create_publisher(PointCloud2, "xwr/point_cloud", 10)
 
         self.subscription = self.create_subscription(
-            IQ, "xwr/iq", self.radar_cb, 1
-        )
-
-    @cached_property
-    def process(self):
-        @jax.jit
-        def _inner(iiqq: Int16[Array, "doppler tx rx _range"]):
-            iq = iq_from_iiqq(iiqq[None, ...])  # batch
-            d__r = self.rsp_inst.doppler_range(iq)
-            dear = self.rsp_inst.elevation_azimuth(d__r)
-            rd_mask, sig, snr = self.cfar(jnp.abs(d__r.squeeze(0)))
-            pc_mask, pc = self.radar_pc(jnp.abs(dear.squeeze(0)), rd_mask)
-            dear = jnp.abs(dear).squeeze(0)
-            return dear, rd_mask, pc, pc_mask
-
-        return _inner
-
-    def get_msg(
-        self,
-        rimg: Float[np.ndarray | Array, "w h"],
-        mask: Float[np.ndarray | Array, "w h"] | None = None,
-        mask_color: list = [0, 0.99, 0],
-    ):
-        img = self.cmap(np.clip(rimg * self.gain, 0, 1))[:, :, :3]
-        if mask is not None:
-            img[mask] = mask_color
-        img = np.ascontiguousarray((img * 255).astype(np.uint8))
-        h, w, c = img.shape
-        return Image(
-            data=img.tobytes(),
-            height=h,
-            width=w,
-            encoding="rgb8",
-            is_bigendian=0,
-            step=w * c,
+            IQ, "xwr/iq", self.radar_cb, 10
         )
 
     def radar_cb(self, msg: IQ):
@@ -154,22 +114,23 @@ class RadarProcess(Node):
         data = jnp.frombuffer(msg.iq.data, dtype=jnp.int16)
         data = data.reshape(self.layout)
 
-        dear, rd_mask, pc, pc_mask = self.process(data)
+        # Process using RadarDSP
+        dear, rd_mask, pc, pc_mask = self.dsp.process_frame(data)
 
         if self.pub_rd.get_subscription_count() > 0:
-            rd = np.swapaxes(jnp.mean(dear, axis=(1, 2)), 0, 1)
-            msg_rd = self.get_msg(rd, rd_mask)
+            rd = self.dsp.get_range_doppler(dear)
+            msg_rd = self.dsp.to_image_msg(rd, rd_mask)
             msg_rd.header = msg.header
             self.pub_rd.publish(msg_rd)
 
         if self.pub_ra.get_subscription_count() > 0:
-            ra = np.swapaxes(jnp.mean(dear, axis=(0, 1)), 0, 1)
-            msg_ra = self.get_msg(ra)
+            ra = self.dsp.get_range_azimuth(dear)
+            msg_ra = self.dsp.to_image_msg(ra)
             msg_ra.header = msg.header
             self.pub_ra.publish(msg_ra)
 
         if self.pub_pc.get_subscription_count() > 0:
-            points = np.asarray(pc)[pc_mask]
+            points = self.dsp.get_point_cloud(pc, pc_mask)
             self._logger.info(f"pts: {points.shape}")
 
             pointcloud_msg = PointCloud2(
