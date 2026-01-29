@@ -10,7 +10,7 @@ def generate_launch_description():
     """Generate launch description."""
     cfg_arg = DeclareLaunchArgument(
         "config",
-        default_value=TextSubstitution(text="config"),
+        default_value=TextSubstitution(text="grt-i1"),
         description="configuration file name under xwr_ros/config without .yaml",
     )
 
