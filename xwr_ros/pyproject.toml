@@ -5,7 +5,7 @@ description = "A ROS2 wrapper for the XWR radar streaming library"
 authors = [{ name = "Ray", email = "juiteh@andrew.cmu.edu" }]
 dependencies = [
     "jax[cuda12]>=0.5.0",
-    "xwr[jax]",
+    "xwr[jax]==0.3.7",
     "rich",
     "matplotlib",
     "opencv-python",
