@@ -18,15 +18,14 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.substitutions import FindPackageShare
 
 sys.path.insert(0, get_package_share_directory("ros_rec") + "/launch")
-from composable import load_bag_cfg, make_recorder_nodes  # type: ignore
+from composable import make_recorder_nodes  # type: ignore
 
 from launch import LaunchDescription
 
 
 def launch_setup(context):
     """Create a ComposableNodeContainer with recorder nodes for xwr sensor."""
-    cfg = load_bag_cfg(context)
-    rec_nodes = make_recorder_nodes(cfg, keys=["xwr"])
+    rec_nodes = make_recorder_nodes(keys=["xwr"])
 
     container = ComposableNodeContainer(
         name="xwr_recorder_container",
