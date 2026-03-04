@@ -25,7 +25,7 @@ from launch import LaunchDescription
 
 def launch_setup(context):
     """Create a ComposableNodeContainer with recorder nodes for xwr sensor."""
-    rec_nodes = make_recorder_nodes(keys=["xwr"])
+    rec_nodes = make_recorder_nodes(keys=["radar"])
 
     container = ComposableNodeContainer(
         name="xwr_recorder_container",
