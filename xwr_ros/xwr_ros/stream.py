@@ -54,7 +54,12 @@ class RadarPublisher(Node):
 
         for attr in dir(self.awr.config):
             if not attr.startswith("__") and hasattr(self.msg_info, attr):
-                setattr(self.msg_info, attr, getattr(self.awr.config, attr))
+                val = getattr(self.awr.config, attr)
+                field = getattr(self.msg_info, attr)
+                if hasattr(field, 'data') and isinstance(val, str):
+                    field.data = val
+                else:
+                    setattr(self.msg_info, attr, val)
 
         self.pub_iq = self.create_publisher(IQ, "xwr/iq", 10)
         self.pub_info = self.create_publisher(ChirpInfo, "xwr/info", 10)
