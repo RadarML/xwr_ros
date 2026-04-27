@@ -44,7 +44,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "config",
-                default_value=TextSubstitution(text="grt-i1"),
+                default_value=TextSubstitution(text="grt-c"),
                 description="Config file name under xwr_ros/config without .yaml",
             ),
             DeclareLaunchArgument(
