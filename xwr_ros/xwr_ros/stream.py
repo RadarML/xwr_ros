@@ -14,6 +14,8 @@ from rich.logging import RichHandler
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension, MultiArrayLayout
 from xwr_msgs.msg import IQ, ChirpInfo
 
+_MAX_PUB_QUEUE_SIZE = 100
+
 
 class RadarPublisher(Node):
     """Radar Stream Node."""
@@ -41,6 +43,7 @@ class RadarPublisher(Node):
         self.layout = MultiArrayLayout()
         self.msg_info = ChirpInfo()
 
+        # build MultiArrayLayout matching raw_shape: [chirp, tx, rx, sample]
         self.msg_iq.header.frame_id = "xwr"
         self.layout.dim = []
         self.dim_label = ["chirp", "tx", "rx", "sample"]
@@ -52,6 +55,7 @@ class RadarPublisher(Node):
             self.layout.dim.append(dim)
         self.layout.data_offset = 0
 
+        # mirror radar config fields into the ChirpInfo message
         for attr in dir(self.awr.config):
             if not attr.startswith("__") and hasattr(self.msg_info, attr):
                 val = getattr(self.awr.config, attr)
@@ -61,15 +65,18 @@ class RadarPublisher(Node):
                 else:
                     setattr(self.msg_info, attr, val)
 
-        self.pub_iq = self.create_publisher(IQ, "xwr/iq", 10)
-        self.pub_info = self.create_publisher(ChirpInfo, "xwr/info", 10)
+        # queue holds up to 1 second of frames, capped to avoid excessive memory use
+        self.pub_queue_size = max(1, min(int(self.awr.fps), _MAX_PUB_QUEUE_SIZE))
+        self._logger.info(f"queue size set to {self.pub_queue_size} (fps={self.awr.fps:.2f})")
+        self.pub_iq = self.create_publisher(IQ, "xwr/iq", self.pub_queue_size)
+        self.pub_info = self.create_publisher(ChirpInfo, "xwr/info", self.pub_queue_size)
 
     def stream(self):
         que = self.awr.qstream(numpy=False)
-        while True:
+        while rclpy.ok():
             frame = que.get(block=True, timeout=None)
             if frame is None:
-                self._logger.info("Stream ended.")
+                self._logger.error("Capture card stream ended unexpectedly.")
                 break
 
             # publish IQ data
@@ -98,4 +105,6 @@ def main():
         node.stream()
     except KeyboardInterrupt:
         node._logger.warning("stream interrupted by user.")
+    finally:
+        node._logger.info("shutting down radar stream...")
         node.awr.stop()
